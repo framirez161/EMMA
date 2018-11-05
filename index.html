@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="en-us">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>SIMULADOR</title>
+<link rel="shortcut icon" href="TemplateData/favicon.ico">
+<link rel="stylesheet" href="TemplateData/style.css">
+<script src="TemplateData/UnityProgress.js"></script>  
+<script src="Build/UnityLoader.js"></script>
+    
+<script src="Chart.min.js"></script>
+<script src="numeric-1.2.6.js"></script>
+
+<script src="jquery-3.2.1.min.js"></script>
+<script src="jquery.bpopup.min.js"></script>
+<script src="xls.js"></script>
+    
+    <!-- MAPA -->
+<link href="examples.css" rel="stylesheet" type="text/css">
+<script language="javascript" type="text/javascript" src="jquery.js"></script>
+<script language="javascript" type="text/javascript" src="jquery.flot.js"></script>
+<script language="javascript" type="text/javascript" src="jquery.flot.time.js"></script>
+    
+
+
+<style>
+#element_to_pop_up { 
+    background-color:#fff;
+    border-radius:15px;
+    color:#000;
+    display:none; 
+    padding:20px;
+    min-width:400px;
+    min-height: 180px;
+}
+    
+#help_div{
+	position:fixed;
+	display:none;
+	left:300px;
+	z-index:100;
+	background-color:#ffffff;
+	width:400px;
+	height:300px;
+	border-style:solid;
+	border-width:1px;
+	padding:5px;
+	background-color:#75a33f;
+	}
+span{
+	background-color:#ffffff;
+	margin:0px 10px;
+	padding:0px 10px;
+	}
+
+#map_canvas {
+	height:500px;
+	width:940px;
+	position:relative;
+	}
+    
+#embed-map-display img
+    {max-width:none!important;
+     background:none!important;
+     font-size: inherit;}
+					    
+
+#output_table, #test_div{
+	position:relative;
+	background-color:#75a33f;
+	width:940px;
+    font-size-adjust: 
+    }
+
+#address_to_find{
+	width:400px;
+	}
+#map_canvas, #output_table, #test_div, #containing_table{
+	position:relative;
+	left:0%;
+	margin:auto;
+    }
+#check_box{
+	float:right;
+	cursor:pointer;
+	border-style:solid;
+	border-width:1px;
+	}  
+    
+    
+    
+</style>
+    
+
+<script src="https://maps.googleapis.com/maps/api/js?v=3.exp&sensor=false"></script>
+  
+<script>
+    
+    
+var gameInstance = UnityLoader.instantiate("gameContainer", "Build/EXP.json", {onProgress: UnityProgress});
+    
+    
+var calculated_terrain = 0;
+var calculated_length = 0;
+
+var mostrado;
+    
+function mostrarOcultarTablas(id){    
+if(calculated_terrain >= 1000 && calculated_terrain <= 5000 && calculated_terrain >= 1 && calculated_length >= 1){   
+mostrado=0;
+elem = document.getElementById(id);
+if(elem.style.display=='block')mostrado=1;
+elem.style.display='none';
+if(mostrado!=1)elem.style.display='block';    
+var element = document.getElementById("mapa"); element.parentNode.removeChild(element); //Borra mapa
+ToUnity();
+}else{    
+    alert("El área seleccionada debe ser mayor a 1000 m2 y menos a 5000 m2");
+    clear_map();
+     }   
+} 
+  
+function mostrarOcultarTablas1(id){     
+mostrado=0;
+elem = document.getElementById(id);
+//if(elem.style.display=='block')
+mostrado=1;
+//elem.style.display='none';
+if(mostrado!=1)elem.style.display='block'; 
+ 
+}   
+    
+    
+    
+  
+ //Reiniciar EMMA 
+function windowClose() {
+  open(location, '_self').close();     
+}
+
+   
+//Cargar EXCEL   
+var oFileIn;
+
+$(function() {
+    oFileIn = document.getElementById('my_file_input');
+    if(oFileIn.addEventListener) {
+        oFileIn.addEventListener('change', filePicked, false);
+    }
+});
+
+
+var sCSV = 0;
+    
+function filePicked(oEvent) {
+    // Get The File From The Input
+    var oFile = oEvent.target.files[0];
+    var sFilename = oFile.name;
+    // Create A File Reader HTML5
+    var reader = new FileReader();
+    
+    // Ready The Event For When A File Gets Selected
+    reader.onload = function(e) {
+        var data = e.target.result;
+        var cfb = XLS.CFB.read(data, {type: 'binary'});
+        var wb = XLS.parse_xlscfb(cfb);
+        // Loop Over Each Sheet
+        wb.SheetNames.forEach(function(sheetName) {
+            // Obtain The Current Row As CSV
+        sCSV = XLS.utils.make_csv(wb.Sheets[sheetName]);   
+        var oJS = XLS.utils.sheet_to_row_object_array(wb.Sheets[sheetName]);   
+    });
+        
+     
+
+
+};
+    
+    // Tell JS To Start Reading The File.. You could delay this if desired
+    reader.readAsBinaryString(oFile)
+      
+}    
+    
+    
+function ToUnity(){
+    gameInstance.SendMessage("Generator", "area", Math.round(calculated_terrain));
+    
+    if(sCSV.length > 0){
+    gameInstance.SendMessage("Generator", "clima", sCSV);  
+    }else{
+    gameInstance.SendMessage("Generator", "ShowAll");
+    }
+
+}
+
+   
+     
+    
+//**********************************************************************************************
+//*****  Written by Paul Wroe
+//*****  pwroe@atterbury.com
+//**********************************************************************************************
+
+var my_geocoder;
+var initial_center_of_map = new google.maps.LatLng(6.445124, -75.544684);
+var initial_zoom_level = 17;
+var points_array = new Array();
+var marker_array = new Array();
+var click_polygon = new google.maps.Polygon;
+var click_line = new google.maps.Polyline;
+var new_marker = new google.maps.Marker;
+var my_map;   
+
+
+function initialize(){
+    
+  var map_options = {								//map options
+
+	scaleControl: true,
+	zoom: 18,
+	center: new google.maps.LatLng(6.445124, -75.544684),
+    mapTypeId: google.maps.MapTypeId.HYBRID
+};  
+    
+    
+	my_geocoder = new google.maps.Geocoder();
+	my_map = new google.maps.Map(document.getElementById("map_canvas"),map_options);//this needs to be global
+	google.maps.event.addListener(my_map, 'click', function(mouse_was_clicked) {on_click_function(mouse_was_clicked.latLng);} );//listener does not fire on polygons
+	google.maps.event.addListener(my_map, 'mousemove', function(mouse_location) {mouse_was_moved(mouse_location.latLng);} );//listener does not fire on polygons
+	load_points();// load points if comming back from upload
+}// end initialize
+
+function on_click_function(location_passed){
+	click_polygon.setMap(null);								//	clears click_polygon from map
+	click_line.setMap(null);								//	clears click_line from map
+	points_array.push(location_passed);						//	push clicked lat lng into points array
+	if (document.getElementById("polygon_mode").checked){	//	create (or recreate) the click_polygon object
+		create_polygon();
+		click_polygon.setMap(my_map);
+	}
+	if (document.getElementById("line_mode").checked){		//	create or recreate the click_line
+		create_line();
+		click_line.setMap(my_map);
+	}
+	clear_markers();
+	rewrite_markers();
+	calculate_dimensions_and_display();
+}// end on_click_function
+
+function create_polygon(){
+	click_polygon = new google.maps.Polygon({
+		paths: points_array,
+		strokeColor: "#FF0000",
+		strokeOpacity: 0.8,
+		strokeWeight: 2,
+		fillColor: "#FF0000",
+		fillOpacity: 0.35
+	});
+}
+
+function create_line(){
+	click_line = new google.maps.Polyline({
+    path: points_array,
+    strokeColor: "#0000ff",
+    strokeOpacity: 1.0,
+    strokeWeight: 2
+  });
+}
+
+function rewrite_markers(){
+	for(var m= 0; m < points_array.length; m++) {							//loop through point array, making markers
+		new_marker = new google.maps.Marker({
+			position: points_array[(m)],
+			draggable:true,
+			map: my_map,												
+			// can add arbitrary properties to marker here
+			index_number: m,
+			title: "index "+m
+		});
+		
+		marker_array.push(new_marker);
+		google.maps.event.addListener(new_marker, 'click', function (){ marker_was_clicked (this) } ); // here is a convoluted one to increase scope!!!
+		google.maps.event.addListener(new_marker, 'dragend', function (){ marker_was_dragged (this) } );
+	}//end for
+}// end rewrite_markers
+
+function clear_markers(){
+	for(var m= 0; m < marker_array.length; m++) {					
+		marker_array[m].setMap(null);
+	}
+	marker_array = [];
+}
+
+function marker_was_clicked (marker_object) {
+	points_array.splice(marker_object.index_number,1);
+	if (document.getElementById("polygon_mode").checked){
+		click_polygon.setMap(null);	//clears polygon
+		click_polygon.setMap(my_map);	//writes polygon
+	}
+	if (document.getElementById("line_mode").checked){
+		click_line.setMap(null);
+		click_line.setMap(my_map);
+	}
+	clear_markers();
+	rewrite_markers();
+	calculate_dimensions_and_display();
+}// end marker_was_clicked
+
+function marker_was_dragged(marker_object){
+	points_array.splice(marker_object.index_number,1);// removes point
+	points_array.splice(marker_object.index_number,0,marker_object.getPosition());// adds updated point
+	if (document.getElementById("polygon_mode").checked){
+		click_polygon.setMap(null);	//clears polygon
+		click_polygon.setMap(my_map);	//writes polygon
+	}
+	if (document.getElementById("line_mode").checked){
+		click_line.setMap(null);
+		click_line.setMap(my_map);
+	}
+	clear_markers();
+	rewrite_markers();
+	calculate_dimensions_and_display();
+}
+
+function calculate_dimensions_and_display(){
+	calculated_terrain = ((google.maps.geometry.spherical.computeArea(points_array)/(1000*1000)*247.105381)*4046.86);
+	calculated_terrain = calculated_terrain.toFixed(2);
+	calculated_length = (((google.maps.geometry.spherical.computeLength(points_array))/1000*.621371192)*1609.34);
+	calculated_length = calculated_length.toFixed(2);
+	if (document.getElementById("polygon_mode").checked){
+		document.getElementById("area").innerHTML = calculated_terrain+" m2";
+	}
+	if (document.getElementById("line_mode").checked){
+		document.getElementById("area").innerHTML = calculated_length+" metros";
+	}
+}
+
+function mode_was_changed(){
+	click_polygon.setMap(null);								//	clears click_polygon from map
+	click_line.setMap(null);								//	clears click_line from map
+	if (document.getElementById("polygon_mode").checked){	//	create (or recreate) the click_polygon object
+		create_polygon();
+		click_polygon.setMap(my_map);
+	}
+	
+	if (document.getElementById("line_mode").checked){		//	create or recreate the click_line
+		create_line();
+		click_line.setMap(my_map);
+	}
+	calculate_dimensions_and_display();
+}
+
+function clear_map(){//removes markers, removes polygon, removes line, sets points array to null
+	clear_markers();
+	click_polygon.setMap(null);
+	click_line.setMap(null);
+	points_array = [];
+	calculate_dimensions_and_display();
+}
+
+function mouse_was_moved(mouse_move_location){
+	
+	var mouse_latitude = mouse_move_location.lat();
+	mouse_latitude = mouse_latitude.toFixed(3);
+	var mouse_longitude = mouse_move_location.lng();
+	mouse_longitude = mouse_longitude.toFixed(3);
+	
+	document.getElementById("mouse_location").innerHTML = mouse_latitude+" "+mouse_longitude;
+
+}
+
+function find_address(){
+	var my_address = document.getElementById("address_to_find").value;
+    my_geocoder.geocode( { 'address': my_address}, function(results, status) {
+		if (status == google.maps.GeocoderStatus.OK){
+			my_map.setCenter(results[0].geometry.location);
+			points_array.push(results[0].geometry.location);		//	push returned lat lng into points array
+			click_polygon.setMap(null);								//	clears click_polygon from map
+			click_line.setMap(null);								//	clears click_line from map
+			if (document.getElementById("polygon_mode").checked){	//	create (or recreate) the click_polygon object
+				create_polygon();
+				click_polygon.setMap(my_map);
+			}
+			if (document.getElementById("line_mode").checked){		//	create or recreate the click_line
+				create_line();
+				click_line.setMap(my_map);
+			}
+			clear_markers();
+			rewrite_markers();
+			calculate_dimensions_and_display();
+		}
+		else{
+			alert("Geocode was not successful for the following reason: " + status);
+		}
+	});
+}
+
+function enter_key_as_submit(event){// note, must pass event, not 'this' to this function
+	if (event.keyCode == 13){
+		find_address()
+	}
+}
+
+function help_window(){
+	document.getElementById("help_div").style.display = "block";
+}
+
+function close_help_window(){
+	document.getElementById("help_div").style.display = "none";
+}
+function load_points(){
+	
+	clear_map();
+	
+		
+	if (points_array.length>0){
+
+		if (document.getElementById("polygon_mode").checked){	//	create (or recreate) the click_polygon object
+			create_polygon();
+			click_polygon.setMap(my_map);
+		}
+		if (document.getElementById("line_mode").checked){		//	create or recreate the click_line
+			create_line();
+			click_line.setMap(my_map);
+		}
+		clear_markers();
+		rewrite_markers();
+		calculate_dimensions_and_display();
+		bounding_box();
+
+	}	
+
+}
+
+function bounding_box(){
+
+	if (points_array.length > 0){
+		var bounds = new google.maps.LatLngBounds();
+		for (var i = 0; i < (points_array.length); i++) {
+			bounds.extend(points_array[i]);
+		}
+		my_map.fitBounds(bounds);// zooms to box
+	}
+}
+
+
+</script> 
+    
+    
+    
+    
+      
+</head>
+    
+<body onload="initialize()">
+     
+<script type="text/javascript" language="javascript">
+    
+
+var hora = [];   
+var outs = []; 
+var dx1   = ["DMI",
+             "Sustrato",
+             "Heces",
+             "_"];
+        
+    
+var ii = 0;   
+    
+var randomColorFactor = function() {
+            return Math.round(Math.random() * 255);
+        };
+var randomColor = function(opacity) {
+            return 'rgba(' + randomColorFactor() + ',' + randomColorFactor() + ',' + randomColorFactor() + ',' + (opacity || '1.3') + ')';
+        };   
+    
+
+var intakeMean = [];
+var intakeMeanGra = [];
+var Gra_ = [];
+var Met_IT = [];
+    
+                // 
+function Simulate(arg1,arg2,arg3,arg4){
+    
+ 
+hora.length= arg3;   
+for (var i = 0; i < hora.length; i++) { 
+    hora[i] = i+1;    
+} 
+
+    
+if(ii > 0){        
+        window.myLine0.destroy();
+        window.myLine1.destroy();
+        window.myLine2.destroy();
+        window.myLine3.destroy();
+        window.myLine4.destroy();
+        window.myLine5.destroy();
+}
+    
+var intake = 0;
+var grazing = 0;
+var grazing_ = 0;
+
+
+for (var i = 0; i < arg1.length; i++) { 
+    intake = intake + (arg1[i]/1000);
+    grazing = grazing + arg2[i];
+    grazing_ = grazing_ + (arg4[i]/1000);    
+} 
+    
+intakeMean[arg3-1]    = intake/arg1.length;
+intakeMeanGra[arg3-1] = grazing/arg2.length;
+Gra_[arg3-1] = grazing_/arg4.length;
+
+if(arg3==1){
+Met_IT [arg3-1] = (60 * 0.0482 )  + (intakeMeanGra[arg3-1] * 0.615);  
+}else{
+Met_IT [arg3-1] = Met_IT [arg3-2] + ((60 * 0.0482 )  + (intakeMeanGra[arg3-1] * 0.615));      
+} 
+   
+
+    
+//Consumo Total
+var config0 = {
+            type: 'bar',
+            data: {
+                labels: hora,
+                datasets: []},
+            options : {
+                responsive: false, 
+                maintainAspectRatio: true} 
+        };  
+    
+//grazing time
+var config1 = {
+            type: 'bar',
+            data: {
+                labels: hora,
+                datasets: []},
+            options : {
+                responsive: false, 
+                maintainAspectRatio: true} 
+        };  
+    
+ //Consumo Total
+var config2 = {
+            type: 'bar',
+            data: {
+                labels: hora,
+                datasets: []},
+            options : {
+                responsive: false, 
+                maintainAspectRatio: true} 
+        };
+    
+    
+       
+
+    
+//Patron de consumo
+var newDataset = {
+                label: "Dinámica de Consumo (Kg)",
+                borderColor: randomColor(0.7),
+                backgroundColor: randomColor(1.0),
+                data: [],
+            };
+      
+    for (var index = 0; index < hora.length; ++index) {
+            newDataset.data.push(intakeMean[index]);                    
+        }
+         config0.data.datasets.push(newDataset);
+      
+var ctx0 = document.getElementById("canvas1").getContext("2d");
+var myChart0 = new Chart(ctx0, config0);
+window.myLine0 = myChart0;  
+window.myLine0.update();  
+     
+
+
+//Patron de tiempo de consumo
+var newDataset = {
+                label: "Tiempo de consumo (min)",
+                borderColor: randomColor(0.7),
+                backgroundColor: randomColor(1.0),
+                data: [],
+            };
+      
+    for (var index = 0; index < hora.length; ++index) {
+            newDataset.data.push(intakeMeanGra[index]);  
+      
+        }
+       config1.data.datasets.push(newDataset);
+
+     
+var ctx1 = document.getElementById("canvas2").getContext("2d");
+var myChart1 = new Chart(ctx1, config1);
+window.myLine1 = myChart1;  
+window.myLine1.update();    
+    
+ 
+//Consumo Total
+var newDataset = {
+                label: "Consumo medio (Kg)",
+                borderColor: randomColor(0.7),
+                backgroundColor: randomColor(1.0),
+                data: [],
+            };
+      
+    for (var index = 0; index < hora.length; ++index) {
+            newDataset.data.push(Gra_[index]);  
+         
+        }
+         config2.data.datasets.push(newDataset);
+
+     
+var ctx2 = document.getElementById("canvas0").getContext("2d");
+var myChart2 = new Chart(ctx2, config2);
+window.myLine2 = myChart2;  
+window.myLine2.update();  
+    
+   
+var DM = Gra_[Gra_.length-1];
+var sustrate=0;
+var methane=0;
+var heces=0;
+    
+//dinamic model params   
+var kcon   =0.580;
+var kfer   =0.749;
+var kpas   =0.277;
+var Ym	   =0.026;   
+    
+   
+for (var jj = 0; jj < arg3; jj++) {    
+
+if(jj==0){
+for (var l = 0; l < dx1.length; l++) { 
+    outs[l]= Array();
+    for (var j = 0; j < arg3; j++) {         
+    outs[l][j] = 0; 
+    }
+}
+}
+
+    
+outs[0][jj] = DM ;
+outs[1][jj] = sustrate;
+outs[2][jj] = heces; 
+outs[3][jj] = methane * 1000;
+    
+    
+var f = function(t,x) {       
+return [
+    -kcon * x[0],                            //DMI
+     kcon * x[0] - kfer * x[1] - kpas * x[1],//Sustrato
+     kfer * x[1] * Ym,                       //CH4
+     kpas * x[1]                             //heces
+];} 
+    
+var sol = numeric.dopri(0,1,[DM,sustrate,methane,heces],f,1e-6,2400);  
+
+var y = numeric.transpose(sol.y);
+    
+var DM_      = y[0];
+var sustrate_= y[1];
+var methane_ = y[2];
+var heces_   = y[3]; 
+ 
+DM       = DM_        [DM_.length-1];
+sustrate = sustrate_  [sustrate_.length-1];
+methane  = methane_   [methane_.length-1];
+heces    = heces_     [heces_.length-1];
+   
+}
+
+    
+var config3 = {
+            type: 'line',
+            data: {
+                labels: hora,
+                datasets: []},
+            options : {
+                responsive: false, 
+                maintainAspectRatio: true} 
+        };    
+    
+    
+for (var index1 = 0; index1 < dx1.length-1; ++index1) {
+     var newDataset = {
+                label: dx1[index1],
+                borderColor: randomColor(0.7),
+                backgroundColor: randomColor(0.1),
+                data: [],
+            };  
+ 
+    for (var index = 0; index < hora.length; ++index) {
+            newDataset.data.push(outs[index1][index]);        
+            }
+            config3.data.datasets.push(newDataset);
+        }
+var ctx3 = document.getElementById("canvas3").getContext("2d");
+var myChart3 = new Chart(ctx3, config3);
+window.myLine3 = myChart3;    
+window.myLine3.update(); 
+    
+    
+var config4 = {
+            type: 'line',
+            data: {
+                labels: hora,
+                datasets: []},
+            options : {
+                responsive: false, 
+                maintainAspectRatio: true} 
+        };    
+    
+    
+    var newDataset = {
+                label: "METANO (g)",
+                borderColor: randomColor(0.7),
+                backgroundColor: randomColor(0.1),
+                data: [],
+            };  
+ 
+    for (var index = 0; index < hora.length; ++index) {
+            newDataset.data.push(outs[3][index]);        
+            }
+            config4.data.datasets.push(newDataset);
+
+var ctx4 = document.getElementById("canvas4").getContext("2d");
+var myChart4 = new Chart(ctx4, config4);
+window.myLine4 = myChart4;    
+window.myLine4.update(); 
+    
+    
+var config5 = {
+            type: 'line',
+            data: {
+                labels: hora,
+                datasets: []},
+            options : {
+                responsive: false, 
+                maintainAspectRatio: true} 
+        };    
+    
+    
+    var newDataset = {
+                label: "METANO (g)",
+                borderColor: randomColor(0.7),
+                backgroundColor: randomColor(0.1),
+                data: [],
+            };  
+ 
+    for (var index = 0; index < hora.length; ++index) {
+            newDataset.data.push(Met_IT[index]);        
+            }
+            config5.data.datasets.push(newDataset);
+
+var ctx5 = document.getElementById("canvas5").getContext("2d");
+var myChart5 = new Chart(ctx5, config5);
+window.myLine5 = myChart5;    
+window.myLine5.update();     
+    
+     
+    
+       
+ii = ii + 1; 
+    
+}
+ 
+    
+
+  
+</script>
+ 
+    
+
+
+<table border="2" width= 100% id='mapa'>   
+<tr>
+<th colspan="8"><h2 style="color:green" >SIMULACION DEL CONSUMO EN UN SISTEMA DE LECHERIA ESPECIALIZADA</h2></th>
+</tr>
+<tr>
+<th colspan="8"><div>        
+    <div id="help_div"> <!-- HELPER-->
+        <div id="check_box" onclick="close_help_window()">X</div>
+        <p>AYUDAS</p>
+    </div>
+<table id="output_table" style="width: 100%"> <!-- Tabla superior MAPA -->
+		
+					<td><input type="button" value="Limpiar Mapa" onclick="clear_map();">
+					</td>
+					<td><input type="radio" name="draw_mode" id="polygon_mode" onclick="mode_was_changed();" checked="checked"> Area </td>
+					<td><input type="radio" name="draw_mode" id="line_mode" onclick="mode_was_changed();"> Distancia
+					</td>
+					<td>Area/Distancia<span id="area">00.00 m2</span>
+					</td>
+					<td>Localización del Mouse <span id="mouse_location">6.445124 -75.544684</span>
+					</td>
+					<td><input type="button" value="Ayuda" onclick="help_window();">
+</table> 
+			
+			<!-- MAPA -->			
+<div id="map_canvas" style="width: 80%"></div>
+			
+<div id="test_div" style="width: 80%"> <!-- Tabla inferior MAPA -->
+				<input type="button" value="Buscar ubicación" onclick="find_address();">
+				<input type="text" name="address_to_find" id="address_to_find" onkeydown="enter_key_as_submit(event)">
+</div>
+
+</div>
+</th>
+</tr>
+<tr>
+<th colspan="8"><h2 style="color:green">INSTRUCCIONES</h2></th>
+</tr> 
+<tr>
+<th colspan="8"><h2 style="color:green" >1. HACIENDO CLICK EN EL MAPA, SELECCIONE UN AREA PARA LA SIMULACION</h2></th>
+</tr>
+<tr>
+<th colspan="8"><h2 style="color:green" >2. SELECCIONE EL ARCHIVO CON EL REGISTRO DE LAS CONDICIONES CLIMATICAS OBSERVADAS DIA A DIA DURANTE EL PERIODO DE CRECIMIENTO DEL PASTO</h2></th>
+</tr>
+<tr>
+<th colspan="8"><input type="file" id="my_file_input" /></th>
+</tr>
+<tr>
+<th colspan="8"><h2 style="color:green" > HACIENDO CLICK EN LA SIGUIENTE IMAGEN PUEDE DESCARGAR UN EJEMPLO DEL ARCHIVO CON CONDICIONES CLIMA</h2></th>
+    <tr>
+<th colspan="8"><a href="Clima.xls" download>
+  <img border="0" src="clim.png" alt="descargar ejemplo de Clima" width="150" height="142">
+</a></th>
+</tr>
+<th colspan="8"><h2 style="color:green" >3. UNA VEZ SELECCIONADO EL TERRENO Y EL ARCHIVO CLIMATICO, PRESIONE EL BOTON "GENERAR TERRENO"</h2></th>
+<tr>
+<th colspan="8"><button onclick="mostrarOcultarTablas('tabla1')">GENERAR TERRENO</button></th>
+</tr>
+<tr>
+<th colspan="8"><h2 style="color:green" >SIMULACION DEL CONSUMO EN UN SISTEMA DE LECHERIA ESPECIALIZADA</h2></th>
+</tr>
+</table>  
+    
+    
+
+    
+
+<table border="2" width= 100% id='tabla1' style='display: none'>
+<tr>
+<th colspan="8"><h2 style="color:green" >SIMULACION DEL CONSUMO EN UN SISTEMA DE LECHERIA ESPECIALIZADA</h2></th>
+</tr>
+ 
+   
+<tr>
+<th colspan="1" width= 5%></th> 
+<th colspan="6" id="gameContainer" style="width: 100%; height: 800px"></th>
+<th colspan="1" width= 5%></th> 
+</tr>
+<tr>
+<th colspan="8"><button onclick="gameInstance.SetFullscreen(1)">Ver Pantalla Completa</button></th>
+</tr>  
+<tr>     
+<th colspan="8"><h2 style="color:green">ESTADISTICAS MEDIAS DE LA SIMULACION</h2></th>
+</tr>
+<tr>     
+<th colspan="8"><canvas id="canvas0"></canvas></th> 
+</tr>
+
+     
+<tr>    
+<th colspan="8"><canvas id="canvas1"></canvas></th>
+ </tr>
+<tr>  
+    
+<th colspan="8"><canvas id="canvas2"></canvas></th> 
+ </tr>
+<tr>   
+    
+<th colspan="8"><canvas id=""></canvas></th> 
+</tr>
+<tr>     
+<th colspan="8"><h2 style="color:green">Dinamica</h2></th>
+</tr>
+<tr>     
+<th colspan="8"><canvas id="canvas3"></canvas></th> 
+ </tr>
+<tr>    
+<th colspan="8"><canvas id="canvas4"></canvas></th>
+ </tr>
+<tr>    
+<th colspan="8"><canvas id="canvas5"></canvas></th>
+ </tr>
+<tr>    
+<th colspan="8"><canvas id=""></canvas></th> 
+</tr>
+</table>   
+
+
+</body>
+</html>
